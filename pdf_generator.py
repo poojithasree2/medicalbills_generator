@@ -1,149 +1,112 @@
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Table,
-    TableStyle,
-    Image,
-    Spacer
-)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image, Spacer
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
 
 
-def generate_pdf(
-    patient_name,
-    age,
-    doctor_name,
-    from_date,
-    to_date,
-    bills,
-    total_amount,
-    logo_path=None
-):
+def generate_pdf(patient_name, age, doctor_name, from_date, to_date, bills, total_amount, logo_path=None):
 
     pdf_path = "medical_bill.pdf"
 
     pdf = SimpleDocTemplate(
         pdf_path,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=20,
-        bottomMargin=20
+        rightMargin=60,
+        leftMargin=60,
+        topMargin=30,
+        bottomMargin=30
     )
 
     styles = getSampleStyleSheet()
 
-    content = []
+    title_style = ParagraphStyle(
+        "title",
+        parent=styles["Heading1"],
+        alignment=TA_CENTER,
+        fontName="Times-Bold"
+    )
 
-    # Small Logo (Top Left)
+    normal_center = ParagraphStyle(
+        "normal_center",
+        parent=styles["Normal"],
+        alignment=TA_CENTER,
+        fontName="Times-Roman",
+        fontSize=10
+    )
+
+    elements = []
+
+    # LOGO
     if logo_path:
         try:
-            logo = Image(
-                logo_path,
-                width=35,
-                height=35
-            )
-            content.append(logo)
+            logo = Image(logo_path, width=60, height=60)
+            logo.hAlign = "CENTER"
+            elements.append(logo)
         except:
             pass
 
-    # Title
-    content.append(
-        Paragraph(
-            "<para align='center'><b><u>MEDICAL BILLS</u></b></para>",
-            styles["Title"]
-        )
-    )
+    # TITLE
+    elements.append(Paragraph("MEDICAL BILLS", title_style))
+    elements.append(Spacer(1, 8))
 
-    # Duration
-    content.append(
-        Paragraph(
-            f"<para align='center'>Duration: FROM:{from_date} To {to_date}</para>",
-            styles["Normal"]
-        )
-    )
+    elements.append(Paragraph(f"Duration: {from_date} to {to_date}", normal_center))
+    elements.append(Spacer(1, 12))
 
-    content.append(Spacer(1, 10))
+    # =========================
+    # CLEAN PATIENT INFO BOX
+    # =========================
+    patient_box = Table([[
+        f"Patient Name: {patient_name}   |   Age: {age}   |   Doctor: {doctor_name}"
+    ]], colWidths=[480])
 
-    table_data = []
+    patient_box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1.2, colors.black),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, -1), "Times-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("PADDING", (0, 0), (-1, -1), 10),
+    ]))
 
-    # Patient Row
-    table_data.append([
-        f"Name of the patient:{patient_name}",
-        "",
-        f"AGE:{age}"
-    ])
+    elements.append(patient_box)
+    elements.append(Spacer(1, 15))
 
-    # Doctor Row
-    table_data.append([
-        f"Name of the doctor:{doctor_name}",
-        "",
-        ""
-    ])
+    # =========================
+    # BILL TABLE
+    # =========================
+    data = [
+        ["S.NO", "Bill Date", "Bill Amount"]
+    ]
 
-    # Header
-    table_data.append([
-        "S.NO",
-        "Bill date",
-        "Bill Amount"
-    ])
-
-    # Bills
     for i, (date, amount) in enumerate(bills, start=1):
-        table_data.append([
-            str(i),
-            str(date),
-            f"{amount:.0f}"
-        ])
+        data.append([str(i), date, f"₹ {amount:,.0f}"])
 
-    # Total Row
-    table_data.append([
-        f"Total Amount: {total_amount:,.0f}",
-        "",
-        ""
-    ])
+    # TOTAL ROW
+    data.append(["", "TOTAL AMOUNT", f"₹ {total_amount:,.0f}"])
 
-    table = Table(
-        table_data,
-        colWidths=[140, 140, 140]
-    )
+    table = Table(data, colWidths=[80, 200, 200])
 
-    table.setStyle(
-        TableStyle([
+    table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
 
-            # Grid
-            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        # Header styling
+        ("BACKGROUND", (0, 0), (-1, 0), colors.darkgrey),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
 
-            # Merge patient row middle cell
-            ("SPAN", (0, 1), (1, 1)),
+        # Alignment
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
 
-            # Merge doctor row
-            ("SPAN", (0, 1), (2, 1)),
+        # Font size
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
 
-            # Merge total row
-            ("SPAN", (0, -1), (2, -1)),
+        # Total row bold
+        ("FONTNAME", (0, -1), (-1, -1), "Times-Bold"),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.lightgrey),
+    ]))
 
-            # Header row
-            ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
+    elements.append(table)
 
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-
-            ("ALIGN", (0, 0), (0, 1), "LEFT"),
-
-            ("ALIGN", (0, -1), (-1, -1), "CENTER"),
-
-            ("FONTSIZE", (0, 0), (-1, -1), 11),
-
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-
-            ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ])
-    )
-
-    content.append(table)
-
-    pdf.build(content)
+    pdf.build(elements)
 
     return pdf_path
