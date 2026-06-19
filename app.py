@@ -1,6 +1,7 @@
 import streamlit as st
 import tempfile
 import base64
+import os
 from pdf_generator import generate_pdf
 
 st.set_page_config(
@@ -10,18 +11,17 @@ st.set_page_config(
 )
 
 st.title("🏥 Medical Bill Generator")
-st.markdown("Fill in the details below to generate an official medical bill PDF.")
 
-# ── Patient Info ────────────────────────────────────────────────────────────
+# ── Patient Info ─────────────────────────────────────────────────────────────
 st.subheader("Patient Details")
+
+patient_name = st.text_input("Patient Name")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    patient_name = st.text_input("Patient Name")
+    doctor_name = st.text_input("Doctor Name")
 with col2:
     age = st.number_input("Age", min_value=1, max_value=120, step=1, value=25)
-
-doctor_name = st.text_input("Doctor Name")
 
 col3, col4 = st.columns(2)
 with col3:
@@ -29,14 +29,14 @@ with col3:
 with col4:
     to_date = st.date_input("To Date")
 
-# ── Logo (optional) ─────────────────────────────────────────────────────────
-st.subheader("Hospital Logo (Optional)")
-logo_file = st.file_uploader(
-    "Upload a small logo — it will appear in the top-right corner",
-    type=["png", "jpg", "jpeg"]
-)
+# ── Logo (optional) ──────────────────────────────────────────────────────────
+with st.expander("➕ Add Hospital Logo (optional)"):
+    logo_file = st.file_uploader(
+        "Upload logo — appears top-right on PDF",
+        type=["png", "jpg", "jpeg"]
+    )
 
-# ── Bills ───────────────────────────────────────────────────────────────────
+# ── Bills ─────────────────────────────────────────────────────────────────────
 st.subheader("Bills")
 
 num_bills = st.number_input(
@@ -50,25 +50,23 @@ for i in range(int(num_bills)):
         bill_date = st.date_input(f"Bill Date {i+1}", key=f"date_{i}")
     with c2:
         amount = st.number_input(
-            f"Amount {i+1} (₹)", min_value=0.0, step=0.01, key=f"amt_{i}"
+            f"Amount {i+1} (₹)", min_value=0.0, step=1.0, key=f"amt_{i}"
         )
     bills.append((bill_date.strftime("%d/%m/%Y"), amount))
 
 total_amount = sum(amt for _, amt in bills)
-st.markdown(f"### Total Amount: ₹ {total_amount:,.0f}")
+st.markdown(f"### Total: ₹ {total_amount:,.0f}")
 
-# ── Generate ─────────────────────────────────────────────────────────────────
+# ── Generate ──────────────────────────────────────────────────────────────────
 if st.button("📄 Generate PDF", type="primary", use_container_width=True):
 
     if not patient_name.strip():
         st.error("Please enter the patient name.")
         st.stop()
-
     if not doctor_name.strip():
         st.error("Please enter the doctor name.")
         st.stop()
 
-    # Save logo to temp file if provided
     logo_path = None
     if logo_file:
         ext = "." + logo_file.name.rsplit(".", 1)[-1]
@@ -77,7 +75,6 @@ if st.button("📄 Generate PDF", type="primary", use_container_width=True):
         tmp.close()
         logo_path = tmp.name
 
-    # Generate PDF
     pdf_path = generate_pdf(
         patient_name=patient_name.strip(),
         age=int(age),
@@ -92,9 +89,9 @@ if st.button("📄 Generate PDF", type="primary", use_container_width=True):
     with open(pdf_path, "rb") as f:
         pdf_bytes = f.read()
 
-    st.success("✅ PDF generated successfully!")
+    st.success("✅ PDF generated!")
 
-    # ── Download button ──────────────────────────────────────────────────────
+    # Download button — works on all devices
     st.download_button(
         label="⬇️ Download PDF",
         data=pdf_bytes,
@@ -103,15 +100,20 @@ if st.button("📄 Generate PDF", type="primary", use_container_width=True):
         use_container_width=True
     )
 
-    # ── Inline Preview ───────────────────────────────────────────────────────
+    # ── Preview ────────────────────────────────────────────────────────────
     st.subheader("Preview")
-    b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-    pdf_display = f"""
-        <iframe
-            src="data:application/pdf;base64,{b64}"
-            width="100%"
-            height="700px"
-            style="border: 1px solid #ddd; border-radius: 6px;"
-        ></iframe>
-    """
-    st.markdown(pdf_display, unsafe_allow_html=True)
+
+    # Convert PDF pages to images for mobile-compatible preview
+    try:
+        from pdf2image import convert_from_bytes
+        images = convert_from_bytes(pdf_bytes, dpi=150)
+        for img in images:
+            st.image(img, use_container_width=True)
+    except Exception:
+        # Fallback: iframe for desktop browsers
+        b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        st.markdown(
+            f'<iframe src="data:application/pdf;base64,{b64}" '
+            f'width="100%" height="700px" style="border:1px solid #ddd;border-radius:6px;"></iframe>',
+            unsafe_allow_html=True
+        )
