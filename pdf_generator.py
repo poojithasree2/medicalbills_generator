@@ -1,112 +1,161 @@
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image, Spacer
+import os
+import tempfile
+from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import Paragraph
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 
-def generate_pdf(patient_name, age, doctor_name, from_date, to_date, bills, total_amount, logo_path=None):
+def generate_pdf(
+    patient_name,
+    age,
+    doctor_name,
+    from_date,
+    to_date,
+    bills,
+    total_amount,
+    logo_path=None
+):
+    pdf_path = tempfile.mktemp(suffix=".pdf")
+    page_width, page_height = A4
 
-    pdf_path = "medical_bill.pdf"
+    margin_left = 40 * mm
+    margin_right = 40 * mm
+    content_width = page_width - margin_left - margin_right
 
-    pdf = SimpleDocTemplate(
-        pdf_path,
-        rightMargin=60,
-        leftMargin=60,
-        topMargin=30,
-        bottomMargin=30
-    )
+    c = canvas.Canvas(pdf_path, pagesize=A4)
 
-    styles = getSampleStyleSheet()
+    y = page_height - 20 * mm  # Start near top
 
-    title_style = ParagraphStyle(
-        "title",
-        parent=styles["Heading1"],
-        alignment=TA_CENTER,
-        fontName="Times-Bold"
-    )
-
-    normal_center = ParagraphStyle(
-        "normal_center",
-        parent=styles["Normal"],
-        alignment=TA_CENTER,
-        fontName="Times-Roman",
-        fontSize=10
-    )
-
-    elements = []
-
-    # LOGO
+    # ── LOGO (optional, top-right corner) ──────────────────────────────────
+    logo_size = 18 * mm
     if logo_path:
         try:
-            logo = Image(logo_path, width=60, height=60)
-            logo.hAlign = "CENTER"
-            elements.append(logo)
-        except:
+            c.drawImage(
+                logo_path,
+                page_width - margin_right - logo_size,
+                y - logo_size,
+                width=logo_size,
+                height=logo_size,
+                preserveAspectRatio=True,
+                mask="auto"
+            )
+        except Exception:
             pass
 
-    # TITLE
-    elements.append(Paragraph("MEDICAL BILLS", title_style))
-    elements.append(Spacer(1, 8))
+    # ── TITLE ───────────────────────────────────────────────────────────────
+    c.setFont("Times-Bold", 16)
+    title = "MEDICAL BILLS"
+    title_width = c.stringWidth(title, "Times-Bold", 16)
+    title_x = (page_width - title_width) / 2
+    c.drawString(title_x, y, title)
 
-    elements.append(Paragraph(f"Duration: {from_date} to {to_date}", normal_center))
-    elements.append(Spacer(1, 12))
+    # Underline
+    c.setLineWidth(0.8)
+    c.line(title_x, y - 1, title_x + title_width, y - 1)
 
-    # =========================
-    # CLEAN PATIENT INFO BOX
-    # =========================
-    patient_box = Table([[
-        f"Patient Name: {patient_name}   |   Age: {age}   |   Doctor: {doctor_name}"
-    ]], colWidths=[480])
+    y -= 8 * mm
 
-    patient_box.setStyle(TableStyle([
-        ("BOX", (0, 0), (-1, -1), 1.2, colors.black),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, -1), "Times-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 11),
-        ("PADDING", (0, 0), (-1, -1), 10),
-    ]))
+    # ── DURATION ────────────────────────────────────────────────────────────
+    c.setFont("Times-Roman", 11)
+    duration_text = f"Duration: FROM:{from_date}  To  {to_date}"
+    duration_width = c.stringWidth(duration_text, "Times-Roman", 11)
+    c.drawString((page_width - duration_width) / 2, y, duration_text)
 
-    elements.append(patient_box)
-    elements.append(Spacer(1, 15))
+    y -= 8 * mm
 
-    # =========================
-    # BILL TABLE
-    # =========================
-    data = [
-        ["S.NO", "Bill Date", "Bill Amount"]
-    ]
+    # ── TABLE ───────────────────────────────────────────────────────────────
+    col1 = content_width * 0.55
+    col2 = content_width * 0.22
+    col3 = content_width * 0.23
+    col_widths = [col1 + col2, col3]   # for 2-col rows
+    col_widths_3 = [col1 * 0.25, col1 * 0.40 + col2 * 0.40, col3 + col1 * 0.35 + col2 * 0.20]
 
+    # We'll build rows manually using the canvas for precise control
+    row_height = 10 * mm
+    header_height = 9 * mm
+
+    table_x = margin_left
+    table_right = page_width - margin_right
+    table_w = content_width
+
+    def draw_cell(x, y, w, h, text, font="Times-Roman", size=11,
+                  align="LEFT", bold=False, bg=None, pad_left=3):
+        if bg:
+            c.setFillColor(bg)
+            c.rect(x, y - h, w, h, fill=1, stroke=0)
+            c.setFillColor(colors.black)
+        c.setFont(font if not bold else "Times-Bold", size)
+        text_y = y - h + (h - size * 0.352778 * mm) / 2 + 0.5 * mm
+        if align == "CENTER":
+            tw = c.stringWidth(str(text), font if not bold else "Times-Bold", size)
+            c.drawString(x + (w - tw) / 2, text_y, str(text))
+        elif align == "RIGHT":
+            tw = c.stringWidth(str(text), font if not bold else "Times-Bold", size)
+            c.drawString(x + w - tw - pad_left * mm, text_y, str(text))
+        else:
+            c.drawString(x + pad_left * mm, text_y, str(text))
+
+    def draw_border(x, y, w, h):
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.5)
+        c.rect(x, y - h, w, h, fill=0, stroke=1)
+
+    # ----- Row 1: Patient name + Age -----
+    rh = row_height
+    name_col_w = table_w * 0.75
+    age_col_w = table_w * 0.25
+
+    draw_cell(table_x, y, name_col_w, rh,
+              f"Name of the patient: {patient_name}", size=11)
+    draw_cell(table_x + name_col_w, y, age_col_w, rh,
+              f"AGE: {age}", size=11, align="CENTER")
+    draw_border(table_x, y, name_col_w, rh)
+    draw_border(table_x + name_col_w, y, age_col_w, rh)
+    y -= rh
+
+    # ----- Row 2: Doctor name (full width) -----
+    draw_cell(table_x, y, table_w, rh,
+              f"Name of the doctor: {doctor_name}", size=11)
+    draw_border(table_x, y, table_w, rh)
+    y -= rh
+
+    # ----- Header row: S.NO | Bill date | Bill Amount -----
+    sno_w = table_w * 0.20
+    date_w = table_w * 0.40
+    amt_w = table_w * 0.40
+
+    draw_cell(table_x, y, sno_w, header_height,
+              "S.NO", bold=True, align="CENTER", size=11)
+    draw_cell(table_x + sno_w, y, date_w, header_height,
+              "Bill date", bold=True, align="CENTER", size=11)
+    draw_cell(table_x + sno_w + date_w, y, amt_w, header_height,
+              "Bill Amount", bold=True, align="CENTER", size=11)
+    draw_border(table_x, y, sno_w, header_height)
+    draw_border(table_x + sno_w, y, date_w, header_height)
+    draw_border(table_x + sno_w + date_w, y, amt_w, header_height)
+    y -= header_height
+
+    # ----- Bill rows -----
     for i, (date, amount) in enumerate(bills, start=1):
-        data.append([str(i), date, f"₹ {amount:,.0f}"])
+        draw_cell(table_x, y, sno_w, rh, str(i), align="CENTER", size=11)
+        draw_cell(table_x + sno_w, y, date_w, rh, date, align="CENTER", size=11)
+        draw_cell(table_x + sno_w + date_w, y, amt_w, rh,
+                  f"{amount:,.0f}", align="CENTER", size=11)
+        draw_border(table_x, y, sno_w, rh)
+        draw_border(table_x + sno_w, y, date_w, rh)
+        draw_border(table_x + sno_w + date_w, y, amt_w, rh)
+        y -= rh
 
-    # TOTAL ROW
-    data.append(["", "TOTAL AMOUNT", f"₹ {total_amount:,.0f}"])
+    # ----- Total row (full width) -----
+    total_text = f"Total Amount:  {total_amount:,.0f}"
+    draw_cell(table_x, y, table_w, rh, total_text,
+              bold=True, align="CENTER", size=12)
+    draw_border(table_x, y, table_w, rh)
 
-    table = Table(data, colWidths=[80, 200, 200])
-
-    table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.8, colors.black),
-
-        # Header styling
-        ("BACKGROUND", (0, 0), (-1, 0), colors.darkgrey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
-
-        # Alignment
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-
-        # Font size
-        ("FONTSIZE", (0, 0), (-1, -1), 11),
-
-        # Total row bold
-        ("FONTNAME", (0, -1), (-1, -1), "Times-Bold"),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.lightgrey),
-    ]))
-
-    elements.append(table)
-
-    pdf.build(elements)
-
+    c.save()
     return pdf_path
