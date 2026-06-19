@@ -44,7 +44,7 @@ for i in range(num_bills):
     c1, c2 = st.columns(2)
 
     with c1:
-        bill_date = st.text_input(
+        bill_date = st.date_input(
             f"Bill Date {i+1}",
             key=f"date_{i}"
         )
@@ -57,7 +57,7 @@ for i in range(num_bills):
             key=f"amount_{i}"
         )
 
-    bills.append((bill_date, amount))
+    bills.append((str(bill_date), amount))
 
 # Total
 total_amount = sum(amount for _, amount in bills)
@@ -70,9 +70,12 @@ if st.button("Generate PDF"):
     logo_path = None
 
     if logo_file is not None:
+
+        extension = "." + logo_file.name.split(".")[-1]
+
         temp_logo = tempfile.NamedTemporaryFile(
             delete=False,
-            suffix=".png"
+            suffix=extension
         )
 
         temp_logo.write(logo_file.read())
